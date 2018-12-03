@@ -1,5 +1,4 @@
 apply plugin: 'com.android.application'
-
 android {
     compileSdkVersion 28
     buildToolsVersion '28.0.3'
@@ -26,9 +25,12 @@ android {
         }
     }
 }
-
 static def renameAPK(variant) {
     variant.outputs.all {
-        outputFileName =  "settings_apk-debug.apk"
+        outputFileName = "settings_apk-debug.apk"
     }
+}
+
+dependencies {
+    compile 'com.google.android.gms:play-services-location:16.0.0'
 }

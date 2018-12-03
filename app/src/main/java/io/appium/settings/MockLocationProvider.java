@@ -20,6 +20,10 @@ import android.content.Context;
 import android.location.Location;
 import android.location.LocationManager;
 import android.os.SystemClock;
+import android.util.Log;
+import com.google.android.gms.common.ConnectionResult;
+import com.google.android.gms.common.GooglePlayServicesUtil;
+
 
 public class MockLocationProvider {
     private String providerName;
@@ -46,4 +50,5 @@ public class MockLocationProvider {
 
         lm.setTestProviderLocation(providerName, mockLocation);
     }
+
 }

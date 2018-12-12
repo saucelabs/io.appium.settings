@@ -36,7 +36,7 @@ import java.util.List;
 
 public class LocationService extends Service {
     private static final List<String> LOCATION_PROVIDERS = Arrays.asList(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER);
-    private static final int LOCATION_UPDATE_INTERVAL_MS = 2000;
+    private static final int LOCATION_UPDATE_INTERVAL_MS = 500;
 
     private static final String TAG = "MOCKED LOCATION SERVICE";
 

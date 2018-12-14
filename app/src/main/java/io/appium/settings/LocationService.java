@@ -18,10 +18,10 @@ package io.appium.settings;
 
 import android.app.Service;
 import android.content.Intent;
-import android.content.pm.PackageManager;
 import android.location.Criteria;
 import android.location.Location;
 import android.location.LocationManager;
+import android.os.AsyncTask;
 import android.os.Build;
 import android.os.IBinder;
 import android.os.SystemClock;
@@ -33,65 +33,57 @@ import com.google.android.gms.location.LocationServices;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 public class LocationService extends Service {
-    private static final List<String> LOCATION_PROVIDERS = Arrays.asList(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER);
-    private static final int LOCATION_UPDATE_INTERVAL_MS = 500;
+    private static final int LOCATION_UPDATE_INTERVAL_MS = 2000;
 
-    private static final String TAG = "MOCKED LOCATION SERVICE";
+    private static final List<String> LOCATION_PROVIDERS = Arrays.asList(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER);
+
+    public interface Keys {
+        String LONGITUDE = "longitude";
+        String LATITUDE = "latitude";
+//        String ALTITUDE = "altitude";
+//        String BEARING = "bearing";
+//        String SPEED = "speed";
+    }
+
+    public static String LOG_TAG = LocationService.class.getName();
+
+    private final AsyncTask<Void, Void, Void> gpsLocationTask;
+
+    private final AtomicBoolean started = new AtomicBoolean(false);
 
     private LocationManager locationManager;
     private GoogleApiClient googleApiClient;
 
-    @Override
-    public IBinder onBind(Intent intent) {
-        return null;
-    }
+    private Intent intent;
 
-    @Override
-    public int onStartCommand(Intent intent, int flags, int startId) {
-        for (String p : new String[]{"android.permission.ACCESS_FINE_LOCATION"}) {
-            if (getApplicationContext().checkCallingOrSelfPermission(p)
-                    != PackageManager.PERMISSION_GRANTED) {
-                Log.e(TAG, String.format("Cannot mock location due to missing permission '%s'", p));
-                return START_NOT_STICKY;
+    public LocationService() {
+        Log.i(LOG_TAG, "create mock location service");
+
+        gpsLocationTask = new AsyncTask<Void, Void, Void>() {
+
+            @Override
+            protected Void doInBackground(Void... params) {
+
+                while (isCancelled() == false) {
+                    float lat = getFloatExtra(intent, Keys.LATITUDE, 0f);
+                    float log = getFloatExtra(intent, Keys.LONGITUDE, 0f);
+                    float alt = 0f;
+                    float bearing = 0f;
+                    float speed = 0f;
+
+                    setLocationManagerLocation(lat, log, alt, bearing, speed, Criteria.ACCURACY_FINE);
+                    setLocationClientLocation("fused", lat, log, alt, bearing, speed, Criteria.ACCURACY_FINE);
+
+                    sleep(LOCATION_UPDATE_INTERVAL_MS);
+                }
+
+                return null;
             }
-        }
-        double longitude;
-        try {
-            longitude = Double.valueOf(intent.getStringExtra("longitude"));
-        } catch (NumberFormatException e) {
-            Log.e(TAG, String.format("longitude should be a valid number. '%s' is given instead",
-                    intent.getStringExtra("longitude")));
-            return START_NOT_STICKY;
-        }
-        double latitude;
-        try {
-            latitude = Double.valueOf(intent.getStringExtra("latitude"));
-        } catch (NumberFormatException e) {
-            Log.e(TAG, String.format("latitude should be a valid number. '%s' is given instead",
-                    intent.getStringExtra("latitude")));
-            return START_NOT_STICKY;
-        }
-        Log.i(TAG,
-                String.format("Setting the location from service with longitude: %.5f, latitude: %.5f",
-                        longitude, latitude));
+        };
 
-        setLocationManagerLocation(latitude, longitude, 0, 0, 0, 1);
-        try {
-            Thread.sleep(LOCATION_UPDATE_INTERVAL_MS);
-        } catch (InterruptedException e) {
-            Log.e(TAG, "Error while sleeping");
-        }
-
-        setLocationClientLocation("fused", latitude, longitude, 0, 0, 0, 1);
-        try {
-            Thread.sleep(LOCATION_UPDATE_INTERVAL_MS);
-        } catch (InterruptedException e) {
-            Log.e(TAG, "Error while sleeping");
-        }
-
-        return START_NOT_STICKY;
     }
 
     @Override
@@ -108,8 +100,20 @@ public class LocationService extends Service {
             addTestProviders();
             enableTestProviders(true);
         } catch (SecurityException e) {
-            Log.e(TAG, "setting mocklocations is not supported by this device", e);
+            Log.e(LOG_TAG, "setting mocklocations is not supported by this device", e);
         }
+    }
+
+    private void prepareLocationClient() {
+        if (isGooglePlayServicesAvailable() == false) {
+            return;
+        }
+
+        googleApiClient = new GoogleApiClient.Builder(this)
+                .addApi(LocationServices.API)
+                .build();
+
+        googleApiClient.connect();
     }
 
     private void addTestProviders() {
@@ -126,33 +130,6 @@ public class LocationService extends Service {
         }
     }
 
-
-    private void prepareLocationClient() {
-        if (isGooglePlayServicesAvailable() == false) {
-            return;
-        }
-
-        googleApiClient = new GoogleApiClient.Builder(this)
-                .addApi(LocationServices.API)
-                .build();
-
-        googleApiClient.connect();
-    }
-
-    private boolean isGooglePlayServicesAvailable() {
-        try {
-            if (GooglePlayServicesUtil.isGooglePlayServicesAvailable(this) != ConnectionResult.SUCCESS) {
-                Log.e("MockLocationProvider", "Google Play Services are not available.");
-                return false;
-            }
-        } catch (Exception e) {
-            Log.e(TAG, "Google Play Services are not available.", e);
-
-            return false;
-        }
-        return true;
-    }
-
     private void setLocationManagerLocation(double latitude, double longitude, double altitude, float bearing,
                                             float speed, float accuracy) {
         for (String provider : LOCATION_PROVIDERS) {
@@ -167,10 +144,10 @@ public class LocationService extends Service {
                 loc.setTime(System.currentTimeMillis());
                 setElapsedTime(loc);
 
-                Log.i(TAG, "Setting mock location " + loc + " for provider " + provider);
+                Log.i(LOG_TAG, "Setting mock location " + loc + " for provider " + provider);
                 locationManager.setTestProviderLocation(provider, loc);
             } catch (java.lang.SecurityException e) {
-                Log.i(TAG, "ACCESS_MOCK_LOCATION permission denied. skipping.");
+                Log.i(LOG_TAG, "ACCESS_MOCK_LOCATION permission denied. skipping.");
             }
 
         }
@@ -183,7 +160,7 @@ public class LocationService extends Service {
         }
 
         if (googleApiClient.isConnected() == false) {
-            Log.e(TAG, "Google API Client is not connected, not setting location.");
+            Log.e(LOG_TAG, "Google API Client is not connected, not setting location.");
             return;
         }
 
@@ -197,17 +174,114 @@ public class LocationService extends Service {
             loc.setSpeed(speed);
             loc.setTime(System.currentTimeMillis());
             setElapsedTime(loc);
-            Log.i(TAG, "Setting mock location for location client: " + loc);
+
+            Log.i(LOG_TAG, "Setting mock location for location client: " + loc);
             LocationServices.FusedLocationApi.setMockLocation(googleApiClient, loc);
             LocationServices.FusedLocationApi.setMockMode(googleApiClient, true);
         } catch (java.lang.SecurityException e) {
-            Log.i(TAG, "ACCESS_MOCK_LOCATION permission denied. skipping.");
+            Log.i(LOG_TAG, "ACCESS_MOCK_LOCATION permission denied. skipping.");
         }
+        sleep(LOCATION_UPDATE_INTERVAL_MS);
     }
 
     private void setElapsedTime(Location mockLocation) {
         if (Build.VERSION.SDK_INT > 16) {
             mockLocation.setElapsedRealtimeNanos(SystemClock.elapsedRealtime());
+        }
+    }
+
+    @Override
+    public void onDestroy() {
+        super.onDestroy();
+
+        gpsLocationTask.cancel(true);
+
+        cleanupLocationManager();
+        cleanupLocationClient();
+    }
+
+    private void cleanupLocationManager() {
+        try {
+            enableTestProviders(false);
+            removeTestProviders();
+        } catch (SecurityException e) {
+            Log.e(LOG_TAG, "setting mocklocations is not supported by this device", e);
+        }
+    }
+
+    private void removeTestProviders() {
+        for (String provider : LOCATION_PROVIDERS) {
+            locationManager.removeTestProvider(provider);
+        }
+    }
+
+    private void cleanupLocationClient() {
+        if (isGooglePlayServicesAvailable() == false) {
+            return;
+        }
+
+        LocationServices.FusedLocationApi.setMockMode(googleApiClient, false);
+        googleApiClient.disconnect();
+    }
+
+    @Override
+    public void onStart(Intent intent, int startId) {
+        handleCommand(intent);
+    }
+
+    @Override
+    public int onStartCommand(Intent intent, int flags, int startId) {
+        handleCommand(intent);
+        return START_REDELIVER_INTENT;
+    }
+
+    private void handleCommand(Intent intent) {
+        this.intent = intent;
+
+        if (started.getAndSet(true) == false) {
+            gpsLocationTask.execute();
+        }
+    }
+
+    @Override
+    public IBinder onBind(Intent paramIntent) {
+        return null;
+    }
+
+    private boolean isGooglePlayServicesAvailable() {
+        try {
+            if (GooglePlayServicesUtil.isGooglePlayServicesAvailable(this) != ConnectionResult.SUCCESS) {
+                Log.e(LOG_TAG, "Google Play Services are not available.");
+                return false;
+            }
+        } catch (Exception e) {
+            Log.e(LOG_TAG, "Google Play Services are not available.", e);
+
+            return false;
+        }
+        return true;
+    }
+
+    public static float getFloatExtra(Intent intent, String key, float def) {
+        try {
+            if (intent.hasExtra(key)) {
+                return Float.parseFloat(intent.getStringExtra(key));
+            }
+        } catch (NumberFormatException e) {
+            Log.w(LOG_TAG, e);
+        }
+        return def;
+    }
+
+    public static void sleep(long time) {
+        if (time <= 0) {
+            return;
+        }
+
+        try {
+            Thread.sleep(time);
+        } catch (InterruptedException exception) {
+            Log.w(LOG_TAG, exception);
         }
     }
 
